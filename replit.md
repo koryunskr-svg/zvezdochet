@@ -11,10 +11,13 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
+- **Database**: PostgreSQL + Drizzle ORM (shared lib), SQLite via `node:sqlite` (bot)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Build**: esbuild (ESM bundle)
+- **Telegram bot**: `node-telegram-bot-api` (polling mode)
+- **AI**: OpenAI-compatible client → HydraAI (`https://api.hydraai.ru/v1/`)
+- **Logging**: pino + pino-http + SQLite action logs table
 
 ## Structure
 
