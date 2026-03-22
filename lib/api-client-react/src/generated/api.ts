@@ -5,18 +5,36 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ErrorResponse,
+  GenerateHoroscopeRequest,
+  GetHistoryParams,
+  GetMeParams,
+  GetReferralParams,
+  HealthStatus,
+  HistoryResponse,
+  HoroscopeResponse,
+  ReferralInfo,
+  SubscribeRequest,
+  SubscribeResponse,
+  SuccessResponse,
+  UpdateThemeRequest,
+  UserProfile,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +110,537 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Returns user profile by Telegram ID from query param
+ * @summary Get current user profile
+ */
+export const getGetMeUrl = (params: GetMeParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/miniapp/me?${stringifiedParams}`
+    : `/api/miniapp/me`;
+};
+
+export const getMe = async (
+  params: GetMeParams,
+  options?: RequestInit,
+): Promise<UserProfile> => {
+  return customFetch<UserProfile>(getGetMeUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetMeQueryKey = (params?: GetMeParams) => {
+  return [`/api/miniapp/me`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetMeQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMe>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetMeParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetMeQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getMe>>> = ({
+    signal,
+  }) => getMe(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMe>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMeQueryResult = NonNullable<Awaited<ReturnType<typeof getMe>>>;
+export type GetMeQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get current user profile
+ */
+
+export function useGetMe<
+  TData = Awaited<ReturnType<typeof getMe>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: GetMeParams,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getMe>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMeQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate a horoscope
+ */
+export const getGenerateHoroscopeUrl = () => {
+  return `/api/miniapp/horoscope`;
+};
+
+export const generateHoroscope = async (
+  generateHoroscopeRequest: GenerateHoroscopeRequest,
+  options?: RequestInit,
+): Promise<HoroscopeResponse> => {
+  return customFetch<HoroscopeResponse>(getGenerateHoroscopeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(generateHoroscopeRequest),
+  });
+};
+
+export const getGenerateHoroscopeMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateHoroscope>>,
+    TError,
+    { data: BodyType<GenerateHoroscopeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateHoroscope>>,
+  TError,
+  { data: BodyType<GenerateHoroscopeRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateHoroscope"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateHoroscope>>,
+    { data: BodyType<GenerateHoroscopeRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateHoroscope(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateHoroscopeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateHoroscope>>
+>;
+export type GenerateHoroscopeMutationBody = BodyType<GenerateHoroscopeRequest>;
+export type GenerateHoroscopeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate a horoscope
+ */
+export const useGenerateHoroscope = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateHoroscope>>,
+    TError,
+    { data: BodyType<GenerateHoroscopeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateHoroscope>>,
+  TError,
+  { data: BodyType<GenerateHoroscopeRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateHoroscopeMutationOptions(options));
+};
+
+/**
+ * @summary Get horoscope history
+ */
+export const getGetHistoryUrl = (params: GetHistoryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/miniapp/history?${stringifiedParams}`
+    : `/api/miniapp/history`;
+};
+
+export const getHistory = async (
+  params: GetHistoryParams,
+  options?: RequestInit,
+): Promise<HistoryResponse> => {
+  return customFetch<HistoryResponse>(getGetHistoryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetHistoryQueryKey = (params?: GetHistoryParams) => {
+  return [`/api/miniapp/history`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getHistory>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetHistoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetHistoryQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getHistory>>> = ({
+    signal,
+  }) => getHistory(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getHistory>>
+>;
+export type GetHistoryQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get horoscope history
+ */
+
+export function useGetHistory<
+  TData = Awaited<ReturnType<typeof getHistory>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetHistoryParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetHistoryQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update user theme preference
+ */
+export const getUpdateThemeUrl = () => {
+  return `/api/miniapp/theme`;
+};
+
+export const updateTheme = async (
+  updateThemeRequest: UpdateThemeRequest,
+  options?: RequestInit,
+): Promise<SuccessResponse> => {
+  return customFetch<SuccessResponse>(getUpdateThemeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateThemeRequest),
+  });
+};
+
+export const getUpdateThemeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateTheme>>,
+    TError,
+    { data: BodyType<UpdateThemeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateTheme>>,
+  TError,
+  { data: BodyType<UpdateThemeRequest> },
+  TContext
+> => {
+  const mutationKey = ["updateTheme"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateTheme>>,
+    { data: BodyType<UpdateThemeRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateTheme(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateThemeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateTheme>>
+>;
+export type UpdateThemeMutationBody = BodyType<UpdateThemeRequest>;
+export type UpdateThemeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update user theme preference
+ */
+export const useUpdateTheme = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateTheme>>,
+    TError,
+    { data: BodyType<UpdateThemeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateTheme>>,
+  TError,
+  { data: BodyType<UpdateThemeRequest> },
+  TContext
+> => {
+  return useMutation(getUpdateThemeMutationOptions(options));
+};
+
+/**
+ * @summary Activate subscription (mock payment)
+ */
+export const getSubscribeUrl = () => {
+  return `/api/miniapp/subscribe`;
+};
+
+export const subscribe = async (
+  subscribeRequest: SubscribeRequest,
+  options?: RequestInit,
+): Promise<SubscribeResponse> => {
+  return customFetch<SubscribeResponse>(getSubscribeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(subscribeRequest),
+  });
+};
+
+export const getSubscribeMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof subscribe>>,
+    TError,
+    { data: BodyType<SubscribeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof subscribe>>,
+  TError,
+  { data: BodyType<SubscribeRequest> },
+  TContext
+> => {
+  const mutationKey = ["subscribe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof subscribe>>,
+    { data: BodyType<SubscribeRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return subscribe(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubscribeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof subscribe>>
+>;
+export type SubscribeMutationBody = BodyType<SubscribeRequest>;
+export type SubscribeMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Activate subscription (mock payment)
+ */
+export const useSubscribe = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof subscribe>>,
+    TError,
+    { data: BodyType<SubscribeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof subscribe>>,
+  TError,
+  { data: BodyType<SubscribeRequest> },
+  TContext
+> => {
+  return useMutation(getSubscribeMutationOptions(options));
+};
+
+/**
+ * @summary Get referral info
+ */
+export const getGetReferralUrl = (params: GetReferralParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/miniapp/referral?${stringifiedParams}`
+    : `/api/miniapp/referral`;
+};
+
+export const getReferral = async (
+  params: GetReferralParams,
+  options?: RequestInit,
+): Promise<ReferralInfo> => {
+  return customFetch<ReferralInfo>(getGetReferralUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetReferralQueryKey = (params?: GetReferralParams) => {
+  return [`/api/miniapp/referral`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetReferralQueryOptions = <
+  TData = Awaited<ReturnType<typeof getReferral>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetReferralParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReferral>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetReferralQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getReferral>>> = ({
+    signal,
+  }) => getReferral(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getReferral>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetReferralQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getReferral>>
+>;
+export type GetReferralQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get referral info
+ */
+
+export function useGetReferral<
+  TData = Awaited<ReturnType<typeof getReferral>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetReferralParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getReferral>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetReferralQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

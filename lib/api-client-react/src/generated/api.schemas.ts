@@ -8,3 +8,110 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface SuccessResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface UserProfile {
+  id: number;
+  telegram_id: number;
+  name?: string | null;
+  username?: string | null;
+  birth_date?: string | null;
+  zodiac_sign?: string | null;
+  referral_code: string;
+  free_horoscopes: number;
+  has_subscription: number;
+  subscription_expires?: string | null;
+  theme: string;
+  horoscope_count: number;
+  referral_count: number;
+}
+
+export type GenerateHoroscopeRequestType =
+  (typeof GenerateHoroscopeRequestType)[keyof typeof GenerateHoroscopeRequestType];
+
+export const GenerateHoroscopeRequestType = {
+  daily: "daily",
+  weekly: "weekly",
+  love: "love",
+  career: "career",
+} as const;
+
+export interface GenerateHoroscopeRequest {
+  telegram_id: number;
+  type?: GenerateHoroscopeRequestType;
+}
+
+export interface HoroscopeResponse {
+  content: string;
+  zodiac_sign: string;
+  type: string;
+  free_horoscopes_remaining: number;
+  has_subscription: number;
+}
+
+export interface HistoryItem {
+  id: number;
+  type: string;
+  content: string;
+  zodiac_sign: string;
+  created_at: string;
+}
+
+export interface HistoryResponse {
+  items: HistoryItem[];
+  total: number;
+}
+
+export type UpdateThemeRequestTheme =
+  (typeof UpdateThemeRequestTheme)[keyof typeof UpdateThemeRequestTheme];
+
+export const UpdateThemeRequestTheme = {
+  light: "light",
+  dark: "dark",
+} as const;
+
+export interface UpdateThemeRequest {
+  telegram_id: number;
+  theme: UpdateThemeRequestTheme;
+}
+
+export interface SubscribeRequest {
+  telegram_id: number;
+}
+
+export interface SubscribeResponse {
+  success: boolean;
+  message: string;
+  payment_id: string;
+  is_mock: boolean;
+  subscription_expires?: string | null;
+}
+
+export interface ReferralInfo {
+  referral_code: string;
+  referral_link: string;
+  referral_count: number;
+  free_horoscopes: number;
+  bot_username: string;
+}
+
+export type GetMeParams = {
+  telegram_id: number;
+};
+
+export type GetHistoryParams = {
+  telegram_id: number;
+  limit?: number;
+};
+
+export type GetReferralParams = {
+  telegram_id: number;
+};

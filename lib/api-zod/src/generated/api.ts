@@ -14,3 +14,113 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Returns user profile by Telegram ID from query param
+ * @summary Get current user profile
+ */
+export const GetMeQueryParams = zod.object({
+  telegram_id: zod.coerce.number(),
+});
+
+export const GetMeResponse = zod.object({
+  id: zod.number(),
+  telegram_id: zod.number(),
+  name: zod.string().nullish(),
+  username: zod.string().nullish(),
+  birth_date: zod.string().nullish(),
+  zodiac_sign: zod.string().nullish(),
+  referral_code: zod.string(),
+  free_horoscopes: zod.number(),
+  has_subscription: zod.number(),
+  subscription_expires: zod.string().nullish(),
+  theme: zod.string(),
+  horoscope_count: zod.number(),
+  referral_count: zod.number(),
+});
+
+/**
+ * @summary Generate a horoscope
+ */
+export const generateHoroscopeBodyTypeDefault = `daily`;
+
+export const GenerateHoroscopeBody = zod.object({
+  telegram_id: zod.number(),
+  type: zod
+    .enum(["daily", "weekly", "love", "career"])
+    .default(generateHoroscopeBodyTypeDefault),
+});
+
+export const GenerateHoroscopeResponse = zod.object({
+  content: zod.string(),
+  zodiac_sign: zod.string(),
+  type: zod.string(),
+  free_horoscopes_remaining: zod.number(),
+  has_subscription: zod.number(),
+});
+
+/**
+ * @summary Get horoscope history
+ */
+export const getHistoryQueryLimitDefault = 10;
+
+export const GetHistoryQueryParams = zod.object({
+  telegram_id: zod.coerce.number(),
+  limit: zod.coerce.number().default(getHistoryQueryLimitDefault),
+});
+
+export const GetHistoryResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      type: zod.string(),
+      content: zod.string(),
+      zodiac_sign: zod.string(),
+      created_at: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Update user theme preference
+ */
+export const UpdateThemeBody = zod.object({
+  telegram_id: zod.number(),
+  theme: zod.enum(["light", "dark"]),
+});
+
+export const UpdateThemeResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string(),
+});
+
+/**
+ * @summary Activate subscription (mock payment)
+ */
+export const SubscribeBody = zod.object({
+  telegram_id: zod.number(),
+});
+
+export const SubscribeResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string(),
+  payment_id: zod.string(),
+  is_mock: zod.boolean(),
+  subscription_expires: zod.string().nullish(),
+});
+
+/**
+ * @summary Get referral info
+ */
+export const GetReferralQueryParams = zod.object({
+  telegram_id: zod.coerce.number(),
+});
+
+export const GetReferralResponse = zod.object({
+  referral_code: zod.string(),
+  referral_link: zod.string(),
+  referral_count: zod.number(),
+  free_horoscopes: zod.number(),
+  bot_username: zod.string(),
+});

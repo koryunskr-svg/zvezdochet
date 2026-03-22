@@ -1,0 +1,16 @@
+packages:
+  "framer-motion": "For page transitions and component animations"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility function to efficiently merge Tailwind CSS classes in JS"
+  "date-fns": "For formatting dates and timestamps"
+
+images:
+  - path: "artifacts/zvezdochet-miniapp/public/images/cosmic-bg.png"
+    description: "Deep dark night sky background with subtle glowing stars and nebula in indigo and deep purple tones, minimalist, mystical, abstract"
+    aspect_ratio: "9:16"
+  - path: "artifacts/zvezdochet-miniapp/public/images/zodiac-wheel.png"
+    description: "Minimalist glowing geometric zodiac wheel on transparent background, gold and white thin lines, elegant, mystical"
+    aspect_ratio: "1:1"
+
+notes:
+  - Telegram WebApp SDK connects the frontend user to the backend via telegram_id

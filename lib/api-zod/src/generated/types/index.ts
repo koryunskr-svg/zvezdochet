@@ -6,4 +6,20 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./errorResponse";
+export * from "./generateHoroscopeRequest";
+export * from "./generateHoroscopeRequestType";
+export * from "./getHistoryParams";
+export * from "./getMeParams";
+export * from "./getReferralParams";
 export * from "./healthStatus";
+export * from "./historyItem";
+export * from "./historyResponse";
+export * from "./horoscopeResponse";
+export * from "./referralInfo";
+export * from "./subscribeRequest";
+export * from "./subscribeResponse";
+export * from "./successResponse";
+export * from "./updateThemeRequest";
+export * from "./updateThemeRequestTheme";
+export * from "./userProfile";

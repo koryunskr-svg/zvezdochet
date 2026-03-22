@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -10,6 +9,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: miniapp
+    description: Telegram Mini App operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /miniapp/me:
+    get:
+      operationId: getMe
+      tags: [miniapp]
+      summary: Get current user profile
+      description: Returns user profile by Telegram ID from query param
+      parameters:
+        - name: telegram_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /miniapp/horoscope:
+    post:
+      operationId: generateHoroscope
+      tags: [miniapp]
+      summary: Generate a horoscope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateHoroscopeRequest"
+      responses:
+        "200":
+          description: Generated horoscope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HoroscopeResponse"
+        "403":
+          description: No horoscopes available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /miniapp/history:
+    get:
+      operationId: getHistory
+      tags: [miniapp]
+      summary: Get horoscope history
+      parameters:
+        - name: telegram_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Horoscope history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+
+  /miniapp/theme:
+    post:
+      operationId: updateTheme
+      tags: [miniapp]
+      summary: Update user theme preference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateThemeRequest"
+      responses:
+        "200":
+          description: Theme updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /miniapp/subscribe:
+    post:
+      operationId: subscribe
+      tags: [miniapp]
+      summary: Activate subscription (mock payment)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscribeRequest"
+      responses:
+        "200":
+          description: Subscription activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscribeResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /miniapp/referral:
+    get:
+      operationId: getReferral
+      tags: [miniapp]
+      summary: Get referral info
+      parameters:
+        - name: telegram_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Referral info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralInfo"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +181,190 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        telegram_id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        username:
+          type: string
+          nullable: true
+        birth_date:
+          type: string
+          nullable: true
+        zodiac_sign:
+          type: string
+          nullable: true
+        referral_code:
+          type: string
+        free_horoscopes:
+          type: integer
+        has_subscription:
+          type: integer
+        subscription_expires:
+          type: string
+          nullable: true
+        theme:
+          type: string
+        horoscope_count:
+          type: integer
+        referral_count:
+          type: integer
+      required:
+        - id
+        - telegram_id
+        - referral_code
+        - free_horoscopes
+        - has_subscription
+        - theme
+        - horoscope_count
+        - referral_count
+
+    GenerateHoroscopeRequest:
+      type: object
+      properties:
+        telegram_id:
+          type: integer
+        type:
+          type: string
+          enum: [daily, weekly, love, career]
+          default: daily
+      required:
+        - telegram_id
+
+    HoroscopeResponse:
+      type: object
+      properties:
+        content:
+          type: string
+        zodiac_sign:
+          type: string
+        type:
+          type: string
+        free_horoscopes_remaining:
+          type: integer
+        has_subscription:
+          type: integer
+      required:
+        - content
+        - zodiac_sign
+        - type
+        - free_horoscopes_remaining
+        - has_subscription
+
+    HistoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        content:
+          type: string
+        zodiac_sign:
+          type: string
+        created_at:
+          type: string
+      required:
+        - id
+        - type
+        - content
+        - zodiac_sign
+        - created_at
+
+    HistoryResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryItem"
+        total:
+          type: integer
+      required:
+        - items
+        - total
+
+    UpdateThemeRequest:
+      type: object
+      properties:
+        telegram_id:
+          type: integer
+        theme:
+          type: string
+          enum: [light, dark]
+      required:
+        - telegram_id
+        - theme
+
+    SubscribeRequest:
+      type: object
+      properties:
+        telegram_id:
+          type: integer
+      required:
+        - telegram_id
+
+    SubscribeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        payment_id:
+          type: string
+        is_mock:
+          type: boolean
+        subscription_expires:
+          type: string
+          nullable: true
+      required:
+        - success
+        - message
+        - payment_id
+        - is_mock
+
+    ReferralInfo:
+      type: object
+      properties:
+        referral_code:
+          type: string
+        referral_link:
+          type: string
+        referral_count:
+          type: integer
+        free_horoscopes:
+          type: integer
+        bot_username:
+          type: string
+      required:
+        - referral_code
+        - referral_link
+        - referral_count
+        - free_horoscopes
+        - bot_username
