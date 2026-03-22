@@ -28,7 +28,7 @@ export async function handleSubscription(
       : "\n❌ Подписка не активна";
 
   const text =
-    `💳 *Подписка Астролог Premium*${expiryText}\n\n` +
+    `💳 *Подписка Звездочет Premium*${expiryText}\n\n` +
     `С подпиской вы получаете:\n` +
     `• 🔮 Ежедневные гороскопы без ограничений\n` +
     `• 💕 Гороскопы любви и карьеры\n` +

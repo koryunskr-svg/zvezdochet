@@ -51,8 +51,8 @@ export async function handleStart(
   onboardingStates.set(telegramId, { step: "awaiting_name" });
 
   const welcomeText =
-    `🌟 *Добро пожаловать в Астролог!*\n\n` +
-    `Я составлю персональный гороскоп специально для вас, учитывая вашу дату рождения и положение звёзд.\n\n` +
+    `🌟 *Добро пожаловать к Звездочету!*\n\n` +
+    `Я — Звездочет, ваш персональный астролог. Составлю гороскоп специально для вас, учитывая вашу дату рождения и положение звёзд.\n\n` +
     `Для начала, как вас зовут? ✨`;
 
   await bot.sendMessage(msg.chat.id, welcomeText, { parse_mode: "Markdown" });
