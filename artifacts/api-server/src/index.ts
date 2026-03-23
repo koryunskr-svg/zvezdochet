@@ -28,10 +28,14 @@ app.listen(port, (err) => {
   logger.info({ port }, "Server listening");
 });
 
-try {
-  createBot();
-  logger.info("Telegram bot started successfully");
-} catch (err) {
-  logger.error({ err }, "Failed to start Telegram bot");
-  process.exit(1);
+if (process.env.BOT_ENABLED === "true") {
+  try {
+    createBot();
+    logger.info("Telegram bot started successfully");
+  } catch (err) {
+    logger.error({ err }, "Failed to start Telegram bot");
+    process.exit(1);
+  }
+} else {
+  logger.info("Telegram bot disabled (BOT_ENABLED != true)");
 }

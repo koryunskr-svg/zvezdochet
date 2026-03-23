@@ -1,6 +1,7 @@
 import { getDb, logAction } from "../db";
 import { getZodiacSign } from "./ai";
 import { logger } from "../../lib/logger";
+import { isAdmin } from "../lib/admin";
 import crypto from "crypto";
 
 export interface User {
@@ -113,6 +114,7 @@ export function updateUserTheme(telegramId: number, theme: "light" | "dark"): vo
 }
 
 export function canGetHoroscope(user: User): boolean {
+  if (isAdmin(user.telegram_id)) return true;
   if (user.has_subscription === 1) {
     if (!user.subscription_expires) return true;
     return new Date(user.subscription_expires) > new Date();

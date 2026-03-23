@@ -6,6 +6,7 @@ import { handleGetHoroscope, handleHoroscopeCallback } from "./handlers/horoscop
 import { handleProfile, handleHistory } from "./handlers/profile";
 import { handleReferral } from "./handlers/referral";
 import { handleSubscription, handleMockPayment } from "./handlers/subscription";
+import { handleAdminCommand, handleAdminCallback, handleAdminMessage } from "./handlers/admin";
 import { findUserByTelegramId, updateUserTheme } from "./services/user";
 
 export function createBot(): TelegramBot {
@@ -66,6 +67,14 @@ export function createBot(): TelegramBot {
     }
   });
 
+  bot.onText(/\/koryun/, async (msg) => {
+    try {
+      await handleAdminCommand(bot, msg);
+    } catch (err) {
+      logger.error({ err, telegramId: msg.from?.id }, "Error in /koryun handler");
+    }
+  });
+
   bot.on("message", async (msg) => {
     if (!msg.text || msg.text.startsWith("/")) return;
 
@@ -73,6 +82,9 @@ export function createBot(): TelegramBot {
     const text = msg.text;
 
     try {
+      const handledByAdmin = await handleAdminMessage(bot, msg);
+      if (handledByAdmin) return;
+
       if (isInOnboarding(telegramId)) {
         await handleOnboardingMessage(bot, msg);
         return;
@@ -117,7 +129,9 @@ export function createBot(): TelegramBot {
     logAction(telegramId, "callback_query", { data });
 
     try {
-      if (data === "subscribe" || data === "pay_show") {
+      if (data.startsWith("admin_")) {
+        await handleAdminCallback(bot, query);
+      } else if (data === "subscribe" || data === "pay_show") {
         await bot.answerCallbackQuery(query.id);
         await handleSubscription(bot, { chat: query.message!.chat, from: query.from, text: "" } as any);
       } else if (data === "pay_mock") {

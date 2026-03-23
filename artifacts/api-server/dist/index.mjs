@@ -91678,6 +91678,12 @@ async function generateHoroscope(telegramId, zodiacSign, name, birthDate, type =
   return content;
 }
 
+// src/bot/lib/admin.ts
+var ADMIN_IDS = /* @__PURE__ */ new Set([1163253697]);
+function isAdmin(telegramId) {
+  return ADMIN_IDS.has(telegramId);
+}
+
 // src/bot/services/user.ts
 import crypto2 from "crypto";
 function generateReferralCode(telegramId) {
@@ -91744,6 +91750,7 @@ function updateUserTheme(telegramId, theme) {
   logAction(telegramId, "theme_changed", { theme });
 }
 function canGetHoroscope(user) {
+  if (isAdmin(user.telegram_id)) return true;
   if (user.has_subscription === 1) {
     if (!user.subscription_expires) return true;
     return new Date(user.subscription_expires) > /* @__PURE__ */ new Date();
@@ -92122,18 +92129,32 @@ async function handleOnboardingMessage(bot, msg) {
   }
   return false;
 }
+function getMiniAppUrl() {
+  if (process.env.MINI_APP_URL) return process.env.MINI_APP_URL;
+  const domains = process.env.REPLIT_DOMAINS;
+  if (domains) {
+    const firstDomain = domains.split(",")[0].trim();
+    return `https://${firstDomain}`;
+  }
+  return null;
+}
 async function sendMainMenu(bot, chatId, name) {
+  const miniAppUrl = getMiniAppUrl();
+  const keyboard = [
+    [{ text: "\u{1F52E} \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0433\u043E\u0440\u043E\u0441\u043A\u043E\u043F" }],
+    [{ text: "\u{1F464} \u041B\u0438\u0447\u043D\u044B\u0439 \u043A\u0430\u0431\u0438\u043D\u0435\u0442" }, { text: "\u{1F4DC} \u0418\u0441\u0442\u043E\u0440\u0438\u044F" }],
+    [{ text: "\u{1F465} \u0420\u0435\u0444\u0435\u0440\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430" }, { text: "\u{1F4B3} \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430" }]
+  ];
+  if (miniAppUrl) {
+    keyboard.push([{ text: "\u{1F310} \u041E\u0442\u043A\u0440\u044B\u0442\u044C Mini App", web_app: { url: miniAppUrl } }]);
+  }
   await bot.sendMessage(
     chatId,
     `\u{1F31F} \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435, *${name}*:`,
     {
       parse_mode: "Markdown",
       reply_markup: {
-        keyboard: [
-          [{ text: "\u{1F52E} \u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0433\u043E\u0440\u043E\u0441\u043A\u043E\u043F" }],
-          [{ text: "\u{1F464} \u041B\u0438\u0447\u043D\u044B\u0439 \u043A\u0430\u0431\u0438\u043D\u0435\u0442" }, { text: "\u{1F4DC} \u0418\u0441\u0442\u043E\u0440\u0438\u044F" }],
-          [{ text: "\u{1F465} \u0420\u0435\u0444\u0435\u0440\u0430\u043B\u044C\u043D\u0430\u044F \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0430" }, { text: "\u{1F4B3} \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430" }]
-        ],
+        keyboard,
         resize_keyboard: true
       }
     }
@@ -92191,10 +92212,10 @@ async function handleGetHoroscope(bot, msg) {
     db2.prepare(
       `INSERT INTO horoscopes (user_id, type, content, zodiac_sign) VALUES (?, 'daily', ?, ?)`
     ).run(user.id, horoscope, user.zodiac_sign);
-    if (user.has_subscription === 0) {
+    if (user.has_subscription === 0 && !isAdmin(user.telegram_id)) {
       decrementFreeHoroscopes(user.id);
     }
-    const remainingInfo = user.has_subscription === 1 ? "\n\n*\u0421\u0442\u0430\u0442\u0443\u0441: \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0430* \u2705" : `
+    const remainingInfo = isAdmin(user.telegram_id) ? "\n\n*\u0421\u0442\u0430\u0442\u0443\u0441: \u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440* \u{1F451}" : user.has_subscription === 1 ? "\n\n*\u0421\u0442\u0430\u0442\u0443\u0441: \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0430* \u2705" : `
 
 _\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C \u0431\u0435\u0441\u043F\u043B\u0430\u0442\u043D\u044B\u0445 \u0433\u043E\u0440\u043E\u0441\u043A\u043E\u043F\u043E\u0432: ${Math.max(0, user.free_horoscopes - 1)}_`;
     await bot.sendMessage(chatId, `${horoscope}${remainingInfo}`, {
@@ -92247,7 +92268,7 @@ async function handleHoroscopeCallback(bot, query, type) {
     db2.prepare(
       `INSERT INTO horoscopes (user_id, type, content, zodiac_sign) VALUES (?, ?, ?, ?)`
     ).run(user.id, type, horoscope, user.zodiac_sign);
-    if (user.has_subscription === 0) {
+    if (user.has_subscription === 0 && !isAdmin(user.telegram_id)) {
       decrementFreeHoroscopes(user.id);
     }
     await bot.sendMessage(chatId, horoscope, { parse_mode: "Markdown" });
@@ -92444,6 +92465,209 @@ async function handleMockPayment(bot, query) {
   }
 }
 
+// src/bot/handlers/admin.ts
+function getStats() {
+  const db2 = getDb();
+  const totalUsers = db2.prepare(`SELECT COUNT(*) as cnt FROM users`).get().cnt;
+  const activeSubscriptions = db2.prepare(
+    `SELECT COUNT(*) as cnt FROM users WHERE has_subscription = 1`
+  ).get().cnt;
+  const totalHoroscopes = db2.prepare(`SELECT COUNT(*) as cnt FROM horoscopes`).get().cnt;
+  const todayHoroscopes = db2.prepare(
+    `SELECT COUNT(*) as cnt FROM horoscopes WHERE date(created_at) = date('now')`
+  ).get().cnt;
+  const newUsersToday = db2.prepare(
+    `SELECT COUNT(*) as cnt FROM users WHERE date(created_at) = date('now')`
+  ).get().cnt;
+  return { totalUsers, activeSubscriptions, totalHoroscopes, todayHoroscopes, newUsersToday };
+}
+async function handleAdminCommand(bot, msg) {
+  const telegramId = msg.from.id;
+  const chatId = msg.chat.id;
+  if (!isAdmin(telegramId)) {
+    logger.warn({ telegramId }, "Unauthorized /koryun attempt");
+    logAction(telegramId, "admin_unauthorized", { command: "/koryun" }, "warn");
+    return;
+  }
+  logAction(telegramId, "admin_menu_opened", {});
+  logger.info({ telegramId }, "Admin opened /koryun menu");
+  await bot.sendMessage(chatId, "\u2699\uFE0F *\u041F\u0430\u043D\u0435\u043B\u044C \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440\u0430*\n\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435:", {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "\u{1F4CA} \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430", callback_data: "admin_stats" }],
+        [{ text: "\u{1F4E2} \u0420\u0430\u0441\u0441\u044B\u043B\u043A\u0430", callback_data: "admin_broadcast" }],
+        [{ text: "\u2699\uFE0F \u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438", callback_data: "admin_settings" }]
+      ]
+    }
+  });
+}
+async function handleAdminCallback(bot, query) {
+  const telegramId = query.from.id;
+  const chatId = query.message.chat.id;
+  const data = query.data ?? "";
+  if (!isAdmin(telegramId)) {
+    logger.warn({ telegramId, data }, "Unauthorized admin callback attempt");
+    logAction(telegramId, "admin_callback_unauthorized", { data }, "warn");
+    await bot.answerCallbackQuery(query.id, { text: "\u26D4 \u041D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0430" });
+    return;
+  }
+  await bot.answerCallbackQuery(query.id);
+  if (data === "admin_stats") {
+    logAction(telegramId, "admin_stats_viewed", {});
+    logger.info({ telegramId }, "Admin viewed stats");
+    const stats = getStats();
+    const text = `\u{1F4CA} *\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u0417\u0432\u0435\u0437\u0434\u043E\u0447\u0435\u0442*
+
+\u{1F465} \u0412\u0441\u0435\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u0439: *${stats.totalUsers}*
+\u{1F195} \u041D\u043E\u0432\u044B\u0445 \u0441\u0435\u0433\u043E\u0434\u043D\u044F: *${stats.newUsersToday}*
+\u{1F4B3} \u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A: *${stats.activeSubscriptions}*
+\u{1F52E} \u0412\u0441\u0435\u0433\u043E \u0433\u043E\u0440\u043E\u0441\u043A\u043E\u043F\u043E\u0432: *${stats.totalHoroscopes}*
+\u{1F4C5} \u0413\u043E\u0440\u043E\u0441\u043A\u043E\u043F\u043E\u0432 \u0441\u0435\u0433\u043E\u0434\u043D\u044F: *${stats.todayHoroscopes}*`;
+    await bot.sendMessage(chatId, text, {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [[{ text: "\u{1F519} \u041D\u0430\u0437\u0430\u0434", callback_data: "admin_back" }]]
+      }
+    });
+  } else if (data === "admin_broadcast") {
+    logAction(telegramId, "admin_broadcast_initiated", {});
+    logger.info({ telegramId }, "Admin initiated broadcast");
+    await bot.sendMessage(
+      chatId,
+      "\u{1F4E2} *\u0420\u0430\u0441\u0441\u044B\u043B\u043A\u0430*\n\n\u041E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0434\u043B\u044F \u0440\u0430\u0441\u0441\u044B\u043B\u043A\u0438 \u0432\u0441\u0435\u043C \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F\u043C.\n\u041D\u0430\u0447\u043D\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0441 `BROADCAST:` \u2014 \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440:\n`BROADCAST: \u041F\u0440\u0438\u0432\u0435\u0442 \u0432\u0441\u0435\u043C! \u{1F31F}`",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[{ text: "\u{1F519} \u041D\u0430\u0437\u0430\u0434", callback_data: "admin_back" }]]
+        }
+      }
+    );
+  } else if (data === "admin_settings") {
+    logAction(telegramId, "admin_settings_opened", {});
+    logger.info({ telegramId }, "Admin opened settings");
+    await bot.sendMessage(chatId, "\u2699\uFE0F *\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043F\u043E\u0434\u043F\u0438\u0441\u043E\u043A*\n\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "\u{1F381} \u0412\u044B\u0434\u0430\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E", callback_data: "admin_grant_sub" }],
+          [{ text: "\u{1F6AB} \u041E\u0442\u043E\u0437\u0432\u0430\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443", callback_data: "admin_revoke_sub" }],
+          [{ text: "\u{1F519} \u041D\u0430\u0437\u0430\u0434", callback_data: "admin_back" }]
+        ]
+      }
+    });
+  } else if (data === "admin_grant_sub") {
+    logAction(telegramId, "admin_grant_sub_initiated", {});
+    await bot.sendMessage(
+      chatId,
+      "\u{1F381} *\u0412\u044B\u0434\u0430\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443*\n\n\u041E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u0443 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435:\n`GRANT_SUB:<telegram_id>:<\u0434\u043D\u0438>`\n\n\u041F\u0440\u0438\u043C\u0435\u0440: `GRANT_SUB:123456789:30`",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[{ text: "\u{1F519} \u041D\u0430\u0437\u0430\u0434", callback_data: "admin_settings" }]]
+        }
+      }
+    );
+  } else if (data === "admin_revoke_sub") {
+    logAction(telegramId, "admin_revoke_sub_initiated", {});
+    await bot.sendMessage(
+      chatId,
+      "\u{1F6AB} *\u041E\u0442\u043E\u0437\u0432\u0430\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443*\n\n\u041E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u0443 \u0432 \u0444\u043E\u0440\u043C\u0430\u0442\u0435:\n`REVOKE_SUB:<telegram_id>`\n\n\u041F\u0440\u0438\u043C\u0435\u0440: `REVOKE_SUB:123456789`",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[{ text: "\u{1F519} \u041D\u0430\u0437\u0430\u0434", callback_data: "admin_settings" }]]
+        }
+      }
+    );
+  } else if (data === "admin_back") {
+    logAction(telegramId, "admin_menu_opened", {});
+    await bot.sendMessage(chatId, "\u2699\uFE0F *\u041F\u0430\u043D\u0435\u043B\u044C \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440\u0430*\n\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "\u{1F4CA} \u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430", callback_data: "admin_stats" }],
+          [{ text: "\u{1F4E2} \u0420\u0430\u0441\u0441\u044B\u043B\u043A\u0430", callback_data: "admin_broadcast" }],
+          [{ text: "\u2699\uFE0F \u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438", callback_data: "admin_settings" }]
+        ]
+      }
+    });
+  }
+}
+async function handleAdminMessage(bot, msg) {
+  const telegramId = msg.from.id;
+  const chatId = msg.chat.id;
+  const text = msg.text ?? "";
+  if (!isAdmin(telegramId)) return false;
+  if (text.startsWith("BROADCAST:")) {
+    const broadcastText = text.slice("BROADCAST:".length).trim();
+    if (!broadcastText) {
+      await bot.sendMessage(chatId, "\u274C \u0422\u0435\u043A\u0441\u0442 \u0440\u0430\u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0435 \u043C\u043E\u0436\u0435\u0442 \u0431\u044B\u0442\u044C \u043F\u0443\u0441\u0442\u044B\u043C.");
+      return true;
+    }
+    const db2 = getDb();
+    const users = db2.prepare(`SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL`).all();
+    logAction(telegramId, "admin_broadcast_sent", { text: broadcastText, recipientCount: users.length });
+    logger.info({ telegramId, recipientCount: users.length, broadcastText }, "Admin broadcast started");
+    await bot.sendMessage(chatId, `\u{1F4E2} \u041D\u0430\u0447\u0438\u043D\u0430\u044E \u0440\u0430\u0441\u0441\u044B\u043B\u043A\u0443 *${users.length}* \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F\u043C...`, { parse_mode: "Markdown" });
+    let success = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        await bot.sendMessage(user.telegram_id, broadcastText);
+        success++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    logAction(telegramId, "admin_broadcast_completed", { success, failed });
+    logger.info({ telegramId, success, failed }, "Admin broadcast completed");
+    await bot.sendMessage(
+      chatId,
+      `\u2705 \u0420\u0430\u0441\u0441\u044B\u043B\u043A\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430
+\u2714\uFE0F \u0423\u0441\u043F\u0435\u0448\u043D\u043E: ${success}
+\u274C \u041E\u0448\u0438\u0431\u043E\u043A: ${failed}`
+    );
+    return true;
+  }
+  if (text.startsWith("GRANT_SUB:")) {
+    const parts = text.slice("GRANT_SUB:".length).trim().split(":");
+    const targetId = parseInt(parts[0]);
+    const days = parseInt(parts[1] ?? "30");
+    if (isNaN(targetId) || isNaN(days)) {
+      await bot.sendMessage(chatId, "\u274C \u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435: `GRANT_SUB:<id>:<\u0434\u043D\u0438>`", { parse_mode: "Markdown" });
+      return true;
+    }
+    const db2 = getDb();
+    const expiresAt = /* @__PURE__ */ new Date();
+    expiresAt.setDate(expiresAt.getDate() + days);
+    db2.prepare(
+      `UPDATE users SET has_subscription = 1, subscription_expires = ?, updated_at = datetime('now') WHERE telegram_id = ?`
+    ).run(expiresAt.toISOString(), targetId);
+    logAction(telegramId, "admin_grant_subscription", { targetId, days, expiresAt: expiresAt.toISOString() });
+    logger.info({ telegramId, targetId, days }, "Admin granted subscription");
+    await bot.sendMessage(chatId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u043D\u0430 *${days}* \u0434\u043D\u0435\u0439 \u0432\u044B\u0434\u0430\u043D\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \`${targetId}\``, { parse_mode: "Markdown" });
+    return true;
+  }
+  if (text.startsWith("REVOKE_SUB:")) {
+    const targetId = parseInt(text.slice("REVOKE_SUB:".length).trim());
+    if (isNaN(targetId)) {
+      await bot.sendMessage(chatId, "\u274C \u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0444\u043E\u0440\u043C\u0430\u0442. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435: `REVOKE_SUB:<id>`", { parse_mode: "Markdown" });
+      return true;
+    }
+    const db2 = getDb();
+    db2.prepare(
+      `UPDATE users SET has_subscription = 0, subscription_expires = NULL, updated_at = datetime('now') WHERE telegram_id = ?`
+    ).run(targetId);
+    logAction(telegramId, "admin_revoke_subscription", { targetId });
+    logger.info({ telegramId, targetId }, "Admin revoked subscription");
+    await bot.sendMessage(chatId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u043E\u0442\u043E\u0437\u0432\u0430\u043D\u0430 \u0443 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \`${targetId}\``, { parse_mode: "Markdown" });
+    return true;
+  }
+  return false;
+}
+
 // src/bot/index.ts
 function createBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -92493,11 +92717,20 @@ function createBot() {
       logger.error({ err, telegramId: msg.from?.id }, "Error in /subscribe handler");
     }
   });
+  bot.onText(/\/koryun/, async (msg) => {
+    try {
+      await handleAdminCommand(bot, msg);
+    } catch (err) {
+      logger.error({ err, telegramId: msg.from?.id }, "Error in /koryun handler");
+    }
+  });
   bot.on("message", async (msg) => {
     if (!msg.text || msg.text.startsWith("/")) return;
     const telegramId = msg.from.id;
     const text = msg.text;
     try {
+      const handledByAdmin = await handleAdminMessage(bot, msg);
+      if (handledByAdmin) return;
       if (isInOnboarding(telegramId)) {
         await handleOnboardingMessage(bot, msg);
         return;
@@ -92537,7 +92770,9 @@ function createBot() {
     logger.info({ telegramId, callbackData: data }, "Callback query received");
     logAction(telegramId, "callback_query", { data });
     try {
-      if (data === "subscribe" || data === "pay_show") {
+      if (data.startsWith("admin_")) {
+        await handleAdminCallback(bot, query);
+      } else if (data === "subscribe" || data === "pay_show") {
         await bot.answerCallbackQuery(query.id);
         await handleSubscription(bot, { chat: query.message.chat, from: query.from, text: "" });
       } else if (data === "pay_mock") {
@@ -92615,12 +92850,16 @@ app_default.listen(port, (err) => {
   }
   logger.info({ port }, "Server listening");
 });
-try {
-  createBot();
-  logger.info("Telegram bot started successfully");
-} catch (err) {
-  logger.error({ err }, "Failed to start Telegram bot");
-  process.exit(1);
+if (process.env.BOT_ENABLED === "true") {
+  try {
+    createBot();
+    logger.info("Telegram bot started successfully");
+  } catch (err) {
+    logger.error({ err }, "Failed to start Telegram bot");
+    process.exit(1);
+  }
+} else {
+  logger.info("Telegram bot disabled (BOT_ENABLED != true)");
 }
 /*! Bundled license information:
 

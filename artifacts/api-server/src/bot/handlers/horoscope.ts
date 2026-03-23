@@ -4,6 +4,7 @@ import { generateHoroscope } from "../services/ai";
 import { getDb, logAction } from "../db";
 import { logger } from "../../lib/logger";
 import { sendMainMenu } from "./onboarding";
+import { isAdmin } from "../lib/admin";
 
 export async function handleGetHoroscope(
   bot: TelegramBot,
@@ -63,12 +64,13 @@ export async function handleGetHoroscope(
       `INSERT INTO horoscopes (user_id, type, content, zodiac_sign) VALUES (?, 'daily', ?, ?)`
     ).run(user.id, horoscope, user.zodiac_sign);
 
-    if (user.has_subscription === 0) {
+    if (user.has_subscription === 0 && !isAdmin(user.telegram_id)) {
       decrementFreeHoroscopes(user.id);
     }
 
-    const remainingInfo =
-      user.has_subscription === 1
+    const remainingInfo = isAdmin(user.telegram_id)
+      ? "\n\n*Статус: Администратор* 👑"
+      : user.has_subscription === 1
         ? "\n\n*Статус: Подписка активна* ✅"
         : `\n\n_Осталось бесплатных гороскопов: ${Math.max(0, user.free_horoscopes - 1)}_`;
 
@@ -135,7 +137,7 @@ export async function handleHoroscopeCallback(
       `INSERT INTO horoscopes (user_id, type, content, zodiac_sign) VALUES (?, ?, ?, ?)`
     ).run(user.id, type, horoscope, user.zodiac_sign);
 
-    if (user.has_subscription === 0) {
+    if (user.has_subscription === 0 && !isAdmin(user.telegram_id)) {
       decrementFreeHoroscopes(user.id);
     }
 

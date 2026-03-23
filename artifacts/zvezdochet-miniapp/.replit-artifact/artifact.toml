@@ -12,7 +12,7 @@ version = "1.0.0"
 [[services]]
 name = "web"
 paths = [ "/" ]
-localPort = 20893
+localPort = 5173
 
 [services.development]
 run = "pnpm --filter @workspace/zvezdochet-miniapp run dev"
@@ -27,5 +27,5 @@ from = "/*"
 to = "/index.html"
 
 [services.env]
-PORT = "20893"
+PORT = "5173"
 BASE_PATH = "/"

@@ -140,22 +140,40 @@ export async function handleOnboardingMessage(
   return false;
 }
 
+export function getMiniAppUrl(): string | null {
+  if (process.env.MINI_APP_URL) return process.env.MINI_APP_URL;
+  const domains = process.env.REPLIT_DOMAINS;
+  if (domains) {
+    const firstDomain = domains.split(",")[0].trim();
+    return `https://${firstDomain}`;
+  }
+  return null;
+}
+
 export async function sendMainMenu(
   bot: TelegramBot,
   chatId: number,
   name: string
 ): Promise<void> {
+  const miniAppUrl = getMiniAppUrl();
+
+  const keyboard: TelegramBot.KeyboardButton[][] = [
+    [{ text: "🔮 Получить гороскоп" }],
+    [{ text: "👤 Личный кабинет" }, { text: "📜 История" }],
+    [{ text: "👥 Реферальная программа" }, { text: "💳 Подписка" }],
+  ];
+
+  if (miniAppUrl) {
+    keyboard.push([{ text: "🌐 Открыть Mini App", web_app: { url: miniAppUrl } }]);
+  }
+
   await bot.sendMessage(
     chatId,
     `🌟 Выберите действие, *${name}*:`,
     {
       parse_mode: "Markdown",
       reply_markup: {
-        keyboard: [
-          [{ text: "🔮 Получить гороскоп" }],
-          [{ text: "👤 Личный кабинет" }, { text: "📜 История" }],
-          [{ text: "👥 Реферальная программа" }, { text: "💳 Подписка" }],
-        ],
+        keyboard,
         resize_keyboard: true,
       },
     }
