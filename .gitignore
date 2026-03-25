@@ -47,3 +47,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# SSH deploy key (private)
+.github/deploy_key

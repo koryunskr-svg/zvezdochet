@@ -18,8 +18,46 @@ jobs:
           username: ${{ secrets.TIMEWEB_USER }}
           key: ${{ secrets.TIMEWEB_KEY }}
           script: |
+            # Создаём папку если нет
+            mkdir -p /var/www/zvezdochet
             cd /var/www/zvezdochet
-            git pull origin main
+            
+            # Инициализируем git если нужно
+            if [ ! -d ".git" ]; then
+              git init
+              git remote add origin https://github.com/koryunskr-svg/zvezdochet.git
+            fi
+            
+            # Устанавливаем Node.js 22 если нет
+            if ! command -v node &> /dev/null || [ $(node -v | cut -d'v' -f2 | cut -d'.' -f1) -lt 22 ]; then
+              curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+              apt install -y nodejs
+            fi
+            
+            # Устанавливаем pnpm если нет
+            if ! command -v pnpm &> /dev/null; then
+              npm install -g pnpm
+            fi
+            
+            # Скачиваем код
+            git fetch origin main
+            git reset --hard origin/main
+            
+            # Устанавливаем зависимости
             pnpm install --frozen-lockfile
-            pm2 restart zvezdochet
+            
+            # Собираем проект
+            cd artifacts/api-server
+            pnpm run build
+            
+            # Создаём .env файл
+            cat > .env << 'EOF'
+            PORT=3000
+            BOT_ENABLED=true
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            HYDRAAI_API_KEY=${{ secrets.HYDRAAI_API_KEY }}
+            EOF
+            
+            # Запускаем через PM2
+            pm2 restart zvezdochet --update-env || pm2 start dist/index.mjs --name zvezdochet
             pm2 save
