@@ -1,8 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { getDb, logAction } from "../db";
-import { isAdmin } from "../lib/admin";
+import { isAdmin, isSuperAdmin } from "../lib/admin";
 import { logger } from "../../lib/logger";
-import { setFreeHoroscopesDefault } from "../lib/config";
 
 function getStats(): {
   totalUsers: number;
@@ -44,6 +43,8 @@ export async function handleAdminCommand(
   logAction(telegramId, "admin_menu_opened", {});
   logger.info({ telegramId }, "Admin opened /koryun menu");
 
+  const isSuper = isSuperAdmin(telegramId);
+
   await bot.sendMessage(chatId, "⚙️ *Панель администратора*\nВыберите действие:", {
     parse_mode: "Markdown",
     reply_markup: {
@@ -51,6 +52,7 @@ export async function handleAdminCommand(
         [{ text: "📊 Статистика", callback_data: "admin_stats" }],
         [{ text: "📢 Рассылка", callback_data: "admin_broadcast" }],
         [{ text: "⚙️ Настройки", callback_data: "admin_settings" }],
+        ...(isSuper ? [[{ text: "👥 Управление админами", callback_data: "admin_admins" }]] : []),
       ],
     },
   });
@@ -159,6 +161,89 @@ export async function handleAdminCallback(
         },
       }
     );
+  } else if (data === "admin_admins") {
+    if (!isSuperAdmin(telegramId)) {
+      await bot.sendMessage(chatId, "⛔ Только для главного админа.");
+      return;
+    }
+
+    logAction(telegramId, "admin_admins_opened", {});
+    logger.info({ telegramId }, "Admin opened admins management");
+
+    const db = getDb();
+    const admins = db.prepare("SELECT telegram_id, is_super_admin, created_at FROM admins ORDER BY created_at").all() as { telegram_id: number; is_super_admin: number; created_at: string }[];
+
+    let text = "👥 *Управление админами*\n\n";
+    const keyboard: any[][] = [];
+
+    for (const admin of admins) {
+      const isSuper = admin.is_super_admin ? " 👑" : "";
+      text += `• ${admin.telegram_id}${isSuper}\n`;
+      if (admin.telegram_id !== telegramId) {
+        keyboard.push([{ text: `❌ Удалить ${admin.telegram_id}`, callback_data: `admin_remove_${admin.telegram_id}` }]);
+      }
+    }
+
+    keyboard.push([{ text: "➕ Добавить админа", callback_data: "admin_add" }]);
+    keyboard.push([{ text: "🔙 Назад", callback_data: "admin_back" }]);
+
+    await bot.sendMessage(chatId, text, {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: keyboard },
+    });
+  } else if (data === "admin_add") {
+    if (!isSuperAdmin(telegramId)) {
+      await bot.sendMessage(chatId, "⛔ Только для главного админа.");
+      return;
+    }
+
+    logAction(telegramId, "admin_add_initiated", {});
+    await bot.sendMessage(
+      chatId,
+      "➕ *Добавить админа*\n\nОтправьте Telegram ID нового админа.\n\nКак узнать ID:\n1. Попросите человека написать боту @userinfobot\n2. Скопируйте его ID\n3. Отправьте мне",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_admins" }]],
+        },
+      }
+    );
+  } else if (data.startsWith("admin_remove_")) {
+    if (!isSuperAdmin(telegramId)) {
+      await bot.sendMessage(chatId, "⛔ Только для главного админа.");
+      return;
+    }
+
+    const targetId = parseInt(data.replace("admin_remove_", ""));
+    const db = getDb();
+    db.prepare("DELETE FROM admins WHERE telegram_id = ?").run(targetId);
+
+    logAction(telegramId, "admin_removed", { targetId });
+    logger.info({ telegramId, targetId }, "Admin removed");
+
+    await bot.answerCallbackQuery(query.id, { text: `✅ Админ ${targetId} удалён` });
+    await bot.deleteMessage(chatId, query.message!.message_id);
+    
+    const admins = db.prepare("SELECT telegram_id, is_super_admin, created_at FROM admins ORDER BY created_at").all() as { telegram_id: number; is_super_admin: number; created_at: string }[];
+
+    let text = "👥 *Управление админами*\n\n";
+    const keyboard: any[][] = [];
+
+    for (const admin of admins) {
+      const isSuper = admin.is_super_admin ? " 👑" : "";
+      text += `• ${admin.telegram_id}${isSuper}\n`;
+      if (admin.telegram_id !== telegramId) {
+        keyboard.push([{ text: `❌ Удалить ${admin.telegram_id}`, callback_data: `admin_remove_${admin.telegram_id}` }]);
+      }
+    }
+
+    keyboard.push([{ text: "➕ Добавить админа", callback_data: "admin_add" }]);
+    keyboard.push([{ text: "🔙 Назад", callback_data: "admin_back" }]);
+
+    await bot.sendMessage(chatId, text, {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: keyboard },
+    });
   } else if (data === "admin_back") {
     logAction(telegramId, "admin_menu_opened", {});
     await bot.sendMessage(chatId, "⚙️ *Панель администратора*\nВыберите действие:", {
@@ -168,6 +253,7 @@ export async function handleAdminCallback(
           [{ text: "📊 Статистика", callback_data: "admin_stats" }],
           [{ text: "📢 Рассылка", callback_data: "admin_broadcast" }],
           [{ text: "⚙️ Настройки", callback_data: "admin_settings" }],
+          [{ text: "👥 Управление админами", callback_data: "admin_admins" }],
         ],
       },
     });
@@ -184,16 +270,7 @@ export async function handleAdminMessage(
 
   if (!isAdmin(telegramId)) return false;
 
-  // Обработка числа для лимита попыток (только если это просто число)
-  if (/^\d+$/.test(text.trim())) {
-    const limit = parseInt(text.trim(), 10);
-    setFreeHoroscopesDefault(limit);
-    logAction(telegramId, "admin_free_limit_set", { newValue: limit });
-    logger.info({ telegramId, limit }, "Admin set free horoscopes limit");
-    await bot.sendMessage(chatId, `✅ Лимит изменён: *${limit}* попыток для новых пользователей`, { parse_mode: "Markdown" });
-    return true;
-  }
-
+  // 1. Сначала проверяем команды с префиксами
   if (text.startsWith("BROADCAST:")) {
     const broadcastText = text.slice("BROADCAST:".length).trim();
     if (!broadcastText) {
@@ -274,6 +351,43 @@ export async function handleAdminMessage(
 
     await bot.sendMessage(chatId, `✅ Подписка отозвана у пользователя \`${targetId}\``, { parse_mode: "Markdown" });
     return true;
+  }
+
+  // 2. Проверяем число — если супер-админ, то это ID для добавления админа
+  //    Если обычный админ — это лимит попыток
+  if (/^\d+$/.test(text.trim())) {
+    const value = parseInt(text.trim(), 10);
+    const db = getDb();
+
+    if (isSuperAdmin(telegramId)) {
+      // Супер-админ: добавляем админа
+      if (value === telegramId) {
+        await bot.sendMessage(chatId, "❌ Вы уже админ.");
+        return true;
+      }
+
+      db.prepare("INSERT OR IGNORE INTO admins (telegram_id) VALUES (?)").run(value);
+      logAction(telegramId, "admin_added", { targetId: value });
+      logger.info({ telegramId, targetId: value }, "Admin added");
+      await bot.sendMessage(
+        chatId,
+        `✅ Админ добавлен: \`${value}\`\n\nНажмите "🔙 Назад" чтобы вернуться в список.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_admins" }]],
+          },
+        }
+      );
+      return true;
+    } else {
+      // Обычный админ: меняем лимит попыток
+      db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('free_horoscopes_default', ?)").run(value);
+      logAction(telegramId, "admin_free_limit_set", { newValue: value });
+      logger.info({ telegramId, limit: value }, "Admin set free horoscopes limit");
+      await bot.sendMessage(chatId, `✅ Лимит изменён: *${value}* попыток для новых пользователей`, { parse_mode: "Markdown" });
+      return true;
+    }
   }
 
   return false;
