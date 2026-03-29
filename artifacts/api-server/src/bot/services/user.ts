@@ -62,7 +62,7 @@ export function createUser(
 
   const config = loadConfig();
   db.prepare(
-    `INSERT INTO users (telegram_id, username, first_name, referral_code, referred_by, free_horoscopes)
+    `INSERT OR IGNORE INTO users (telegram_id, username, first_name, referral_code, referred_by, free_horoscopes)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(telegramId, username, firstName, referralCode, referredById, config.freeHoroscopesDefault);
 

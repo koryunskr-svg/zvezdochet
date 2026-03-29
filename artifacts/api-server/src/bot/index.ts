@@ -1,4 +1,5 @@
 import TelegramBot from "node-telegram-bot-api";
+import { handleTestNew, handleTestDelete } from "./handlers/test-mode";
 import { logger } from "../lib/logger";
 import { logAction } from "./db";
 import { handleStart, handleOnboardingMessage, isInOnboarding, sendMainMenu } from "./handlers/onboarding";
@@ -84,6 +85,15 @@ export function createBot(): TelegramBot {
     }
   });
 
+
+  bot.onText(/\/test_new/, async (msg) => {
+    await handleTestNew(bot, msg);
+  });
+
+  bot.onText(/\/test_delete (\\d+)/, async (msg, match) => {
+    const testUserId = parseInt(match[1]);
+    await handleTestDelete(bot, msg, testUserId);
+  });
   bot.on("message", async (msg) => {
     if (!msg.text || msg.text.startsWith("/")) return;
 
@@ -138,7 +148,7 @@ export function createBot(): TelegramBot {
     logAction(telegramId, "callback_query", { data });
 
     try {
-      if (data.startsWith("admin_")) {
+      if (data.startsWith("admin_") || data.startsWith("sub_detail_")) {
         await handleAdminCallback(bot, query);
       } else if (data === "subscribe" || data === "pay_show") {
         await bot.answerCallbackQuery(query.id);

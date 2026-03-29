@@ -18,18 +18,19 @@ export async function handleTestNew(
     await bot.sendMessage(msg.chat.id, "❌ Доступ только для админов");
     return;
   }
+  const nameArg = msg.text?.split(" ")[1];
 
   const testUserId = TEST_USER_PREFIX + testCounter++;
   const testUsername = `test_user_${testUserId}`;
 
   // Создаём тест-юзера
-  createUser(testUserId, testUsername, "Тестовый Пользователь", undefined);
+  createUser(testUserId, testUsername, nameArg || "Test" + (testCounter - 1), undefined);
   logAction(adminId, "test_mode_created", { testUserId });
 
   // Имитируем сообщение /start от тест-юзера
   const fakeMsg = {
     ...msg,
-    from: { id: testUserId, username: testUsername, first_name: "Тестовый Пользователь", is_bot: false },
+    from: { id: testUserId, username: testUsername, first_name: nameArg || "Test" + (testCounter - 1), is_bot: false },
     text: "/start",
     chat: { id: msg.chat.id, type: "private" }
   } as TelegramBot.Message;

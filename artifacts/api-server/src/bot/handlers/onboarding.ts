@@ -42,9 +42,14 @@ export async function handleStart(
   if (!user) {
     user = createUser(telegramId, username, firstName, referralCode);
   }
+    // Для тест-юзеров имя уже установлено — пропускаем вопрос
+    if (telegramId >= 999000 && user.first_name) {
+      await sendMainMenu(bot, msg.chat.id, user.first_name);
+      return;
+    }
 
   if (user.name && user.birth_date) {
-    await sendMainMenu(bot, msg.chat.id, user.name);
+    await sendMainMenu(bot, msg.chat.id, user.first_name);
     return;
   }
 

@@ -1,9 +1,36 @@
 import TelegramBot from "node-telegram-bot-api";
+import { handleTestNew } from "./test-mode";
 import { getDb, logAction } from "../db";
 import { isAdmin, isSuperAdmin } from "../lib/admin";
 import { logger } from "../../lib/logger";
+// Состояния админов в БД (чтобы не терялось при рестарте)
+function setAdminState(telegramId: number, action: "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub") {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare("INSERT OR REPLACE INTO admin_states (telegram_id, action, created_at) VALUES (?, ?, ?)").run(telegramId, action, now);
+}
 
-function getStats(): {
+function getAdminState(telegramId: number): "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub" | null {
+  const db = getDb();
+  const row = db.prepare("SELECT action, created_at FROM admin_states WHERE telegram_id = ?").get(telegramId) as { action: string; created_at: string } | undefined;
+  if (!row) return null;
+  // Проверяем таймаут 5 минут
+  const age = Date.now() - new Date(row.created_at).getTime();
+  if (age > 5 * 60 * 1000) {
+    clearAdminState(telegramId);
+    return null;
+  }
+  return row.action as "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub";
+}
+
+function clearAdminState(telegramId: number) {
+  const db = getDb();
+  db.prepare("DELETE FROM admin_states WHERE telegram_id = ?").run(telegramId);
+}
+
+
+
+function getStats(period: string = "today", customDays?: number): {
   totalUsers: number;
   activeSubscriptions: number;
   totalHoroscopes: number;
@@ -20,10 +47,13 @@ function getStats(): {
   const todayHoroscopes = (db.prepare(
     `SELECT COUNT(*) as cnt FROM horoscopes WHERE date(created_at) = date('now')`
   ).get() as { cnt: number }).cnt;
+  const newUsersQuery = period === 'custom' && customDays ? `created_at >= datetime('now', '-${customDays} days')` : period === 'today' ? "date(created_at) = date('now')" :
+                        period === '7days' ? "created_at >= datetime('now', '-7 days')" :
+                        period === '30days' ? "created_at >= datetime('now', '-30 days')" :
+                        "1=1";
   const newUsersToday = (db.prepare(
-    `SELECT COUNT(*) as cnt FROM users WHERE date(created_at) = date('now')`
+    `SELECT COUNT(*) as cnt FROM users WHERE ${newUsersQuery}`
   ).get() as { cnt: number }).cnt;
-
   return { totalUsers, activeSubscriptions, totalHoroscopes, todayHoroscopes, newUsersToday };
 }
 
@@ -45,19 +75,39 @@ export async function handleAdminCommand(
 
   const isSuper = isSuperAdmin(telegramId);
 
-  await bot.sendMessage(chatId, "⚙️ *Панель администратора*\nВыберите действие:", {
+  await bot.sendMessage(chatId, "⚙️ *Панель администратора*\nВыберите действие: ", {
     parse_mode: "Markdown",
     reply_markup: {
       inline_keyboard: [
         [{ text: "📊 Статистика", callback_data: "admin_stats" }],
         [{ text: "📢 Рассылка", callback_data: "admin_broadcast" }],
         [{ text: "⚙️ Настройки", callback_data: "admin_settings" }],
+        ...(isSuper ? [[{ text: "📋 Подписчики", callback_data: "admin_subscribers" }]] : []),
+        [{ text: "🧪 Тест-режим", callback_data: "admin_test_mode" }],
         ...(isSuper ? [[{ text: "👥 Управление админами", callback_data: "admin_admins" }]] : []),
       ],
     },
   });
 }
 
+
+// Универсальная функция: отправляет главное меню новым сообщением
+async function sendAdminMenuForce(bot: TelegramBot, chatId: number, telegramId: number) {
+  const isSuper = isSuperAdmin(telegramId);
+  await bot.sendMessage(chatId, "⚙️ *Панель администратора*\nВыберите действие: ", {
+    parse_mode: "Markdown",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "📊 Статистика", callback_data: "admin_stats" }],
+        [{ text: "📢 Рассылка", callback_data: "admin_broadcast" }],
+        [{ text: "⚙️ Настройки", callback_data: "admin_settings" }],
+        ...(isSuper ? [[{ text: "📋 Подписчики", callback_data: "admin_subscribers" }]] : []),
+        [{ text: "🧪 Тест-режим", callback_data: "admin_test_mode" }],
+        ...(isSuper ? [[{ text: "👥 Управление админами", callback_data: "admin_admins" }]] : []),
+      ],
+    },
+  });
+}
 export async function handleAdminCallback(
   bot: TelegramBot,
   query: TelegramBot.CallbackQuery
@@ -65,6 +115,23 @@ export async function handleAdminCallback(
   const telegramId = query.from.id;
   const chatId = query.message!.chat.id;
   const data = query.data ?? "";
+  logger.info({ data, telegramId }, "DEBUG: handleAdminCallback ENTERED");
+ // FORCE CHECK SUB_DETAIL FIRST
+ if (data.startsWith("sub_detail_")) {
+ const targetId = parseInt(data.replace("sub_detail_", ""));
+ logger.info({ targetId }, "FORCE: Handling sub_detail");
+ const db = getDb();
+ const user = db.prepare(`SELECT telegram_id, username, first_name, subscription_expires FROM users WHERE telegram_id = ?`).get(targetId) as any;
+ if (!user) { await bot.answerCallbackQuery(query.id, { text: "Not found" }); return; }
+ const name = user.username ? `@${user.username}` : (user.first_name || `ID:${user.telegram_id}`);
+ const expires = new Date(user.subscription_expires).toLocaleDateString("ru-RU");
+ const text = `👤 *Карточка*\n\nИмя: ${name}\nДо: *${expires}*`;
+ const keyboard = [[{ text: "➕ +30 дней", callback_data: `admin_sub_extend_${targetId}_30` }, { text: "🚫 Отозвать", callback_data: `admin_sub_revoke_${targetId}` }], [{ text: "🔙 Назад", callback_data: "admin_subscribers" }]];
+ await bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: keyboard } });
+ await bot.answerCallbackQuery(query.id);
+ return; // EXIT IMMEDIATELY
+ }
+
 
   if (!isAdmin(telegramId)) {
     logger.warn({ telegramId, data }, "Unauthorized admin callback attempt");
@@ -75,6 +142,17 @@ export async function handleAdminCallback(
 
   await bot.answerCallbackQuery(query.id);
 
+
+  // Обработчик кнопки "В меню" - удаляет текущее сообщение и шлет главное меню
+  if (data === "admin_back") {
+    try {
+      await bot.deleteMessage(chatId, query.message!.message_id);
+    } catch (e) {
+      // Игнорируем ошибку, если сообщение уже удалено
+    }
+    await sendAdminMenuForce(bot, chatId, telegramId);
+    return;
+  }
   if (data === "admin_stats") {
     logAction(telegramId, "admin_stats_viewed", {});
     logger.info({ telegramId }, "Admin viewed stats");
@@ -91,73 +169,167 @@ export async function handleAdminCallback(
     await bot.sendMessage(chatId, text, {
       parse_mode: "Markdown",
       reply_markup: {
-        inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_back" }]],
-      },
-    });
-  } else if (data === "admin_broadcast") {
-    logAction(telegramId, "admin_broadcast_initiated", {});
-    logger.info({ telegramId }, "Admin initiated broadcast");
-
-    await bot.sendMessage(
-      chatId,
-      "📢 *Рассылка*\n\nОтправьте сообщение для рассылки всем пользователям.\nНачните текст с `BROADCAST:` — например:\n`BROADCAST: Привет всем! 🌟`",
-      {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_back" }]],
-        },
-      }
-    );
-  } else if (data === "admin_settings") {
-    logAction(telegramId, "admin_settings_opened", {});
-    logger.info({ telegramId }, "Admin opened settings");
-
-    await bot.sendMessage(chatId, "⚙️ *Настройки*\nВыберите действие:", {
-      parse_mode: "Markdown",
-      reply_markup: {
         inline_keyboard: [
-          [{ text: "🎁 Выдать подписку пользователю", callback_data: "admin_grant_sub" }],
-          [{ text: "🚫 Отозвать подписку", callback_data: "admin_revoke_sub" }],
-          [{ text: "🔮 Лимит бесплатных попыток", callback_data: "admin_free_limit" }],
-          [{ text: "🔙 Назад", callback_data: "admin_back" }],
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
         ],
       },
     });
+  } else if (data === "admin_stats_1day") {
+    const stats = getStats("today");
+    const text = `📊 *Статистика Звездочет (1 день)*\n\n` +
+      `👥 Всего пользователей: *${stats.totalUsers}*\n` +
+      `🆕 Новых за 1 день: *${stats.newUsersToday}*\n` +
+      `💳 Активных подписок: *${stats.activeSubscriptions}*\n` +
+      `🔮 Всего гороскопов: *${stats.totalHoroscopes}*\n` +
+      `📅 Гороскопов сегодня: *${stats.todayHoroscopes}*`;
+    await bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+  } else if (data === "admin_stats_7days") {
+    const stats = getStats("7days");
+    const text = `📊 *Статистика Звездочет (7 дней)*\n\n` +
+      `👥 Всего пользователей: *${stats.totalUsers}*\n` +
+      `🆕 Новых за 7 дней: *${stats.newUsersToday}*\n` +
+      `💳 Активных подписок: *${stats.activeSubscriptions}*\n` +
+      `🔮 Всего гороскопов: *${stats.totalHoroscopes}*\n` +
+      `📅 Гороскопов сегодня: *${stats.todayHoroscopes}*`;
+    await bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+  } else if (data === "admin_stats_30days") {
+    const stats = getStats("30days");
+    const text = `📊 *Статистика Звездочет (30 дней)*\n\n` +
+      `👥 Всего пользователей: *${stats.totalUsers}*\n` +
+      `🆕 Новых за 30 дней: *${stats.newUsersToday}*\n` +
+      `💳 Активных подписок: *${stats.activeSubscriptions}*\n` +
+      `🔮 Всего гороскопов: *${stats.totalHoroscopes}*\n` +
+      `📅 Гороскопов сегодня: *${stats.todayHoroscopes}*`;
+    await bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+  } else if (data === "admin_stats_all") {
+    const stats = getStats("all");
+    const text = `📊 *Статистика Звездочет (Все время)*\n\n` +
+      `👥 Всего пользователей: *${stats.totalUsers}*\n` +
+      `🆕 Новых всего: *${stats.newUsersToday}*\n` +
+      `💳 Активных подписок: *${stats.activeSubscriptions}*\n` +
+      `🔮 Всего гороскопов: *${stats.totalHoroscopes}*\n` +
+      `📅 Гороскопов сегодня: *${stats.todayHoroscopes}*`;
+    await bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+  } else if (data === "admin_stats_custom") {
+    await bot.sendMessage(chatId, "🔢 *Свой период*\n\nВведите количество дней (например, `15`):", { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+    setAdminState(telegramId, "stats_custom_days");
+    return;
+  } else if (data === "admin_broadcast") {
+    logAction(telegramId, "admin_broadcast_initiated", {});
+    logger.info({ telegramId }, "Admin initiated broadcast");
+    await bot.sendMessage(chatId, "📢 *Рассылка*\n\nОтправьте сообщение для рассылки всем пользователям.\nНачните текст с `BROADCAST:` — например:\n`BROADCAST: Привет всем! 🌟`", { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+ return;
+ } else if (data === "admin_subscribers") {
+    const subs = db.prepare(`SELECT u.telegram_id, u.username, u.first_name, u.subscription_expires FROM users u WHERE u.has_subscription = 1 AND u.subscription_expires > datetime('now') ORDER BY u.subscription_expires ASC LIMIT 50`).all() as { telegram_id: number; username: string | null; first_name: string | null; subscription_expires: string }[];
+    let text = "📋 *Активные подписки*\n\n";
+    if (subs.length === 0) text += "_Нет активных подписок._\n";
+    else { text += `Всего: ${subs.length}\n\n_Нажмите на имя, чтобы управлять подпиской:_`;
+    }
+    const keyboard: any[][] = [];
+    for (const sub of subs) { const name = sub.username ? `@${sub.username}` : (sub.first_name || `ID:${sub.telegram_id}`); keyboard.push([{ text: `👤 ${name}`, callback_data: `sub_detail_${sub.telegram_id}` }]); }
+    keyboard.push([{ text: "🏠 В меню", callback_data: "admin_back" }]);
+    try { await bot.editMessageText(text, { chat_id: chatId, message_id: query.message!.message_id, parse_mode: "Markdown", reply_markup: { inline_keyboard: keyboard } }); }
+    catch (e: any) { if (e?.response?.body?.error_code === 400) await bot.sendMessage(chatId, text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: keyboard } }); }
+    // Обновляем список на экране
+  } else if (data.startsWith("admin_sub_extend_")) {
+    logger.info({ telegramId, data }, "DEBUG: Entered sub_extend handler");
+    if (!isSuperAdmin(telegramId)) {
+      await bot.answerCallbackQuery(query.id, { text: "⛔ Нет прав" });
+      return;
+    }
+    const parts = data.replace("admin_sub_extend_", "").split("_");
+    const targetId = parseInt(parts[0]);
+    const days = parseInt(parts[1] || "30");
+    const db = getDb();
+    // Получаем текущую дату окончания или берем сегодня
+    const current = db.prepare(`SELECT subscription_expires FROM users WHERE telegram_id = ?`).get(targetId) as { subscription_expires: string | null } | undefined;
+    let baseDate = current?.subscription_expires ? new Date(current.subscription_expires) : new Date();
+    // Если подписка уже истекла, начинаем отсчет с сегодня
+    if (baseDate < new Date()) baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() + days);
+    db.prepare(`UPDATE users SET has_subscription = 1, subscription_expires = ? WHERE telegram_id = ?`).run(baseDate.toISOString(), targetId);
+    logAction(telegramId, "admin_sub_extend", { targetId, days });
+    logger.info({ telegramId, targetId, days }, "Subscription extended");
+    await bot.answerCallbackQuery(query.id, { text: `✅ Добавлено ${days} дней пользователю ${targetId}` });
+    await bot.sendMessage(chatId, `✅ *Подписка продлена*\n\nПользователь: ID ${targetId}\nДобавлено дней: ${days}`, { parse_mode: "Markdown" });
+
+  } else if (data.startsWith("admin_sub_revoke_")) {
+    if (!isSuperAdmin(telegramId)) {
+      await bot.answerCallbackQuery(query.id, { text: "⛔ Нет прав" });
+      return;
+    }
+    const targetId = parseInt(data.replace("admin_sub_revoke_", ""));
+    const db = getDb();
+    db.prepare(`UPDATE users SET has_subscription = 0, subscription_expires = NULL WHERE telegram_id = ?`).run(targetId);
+    logAction(telegramId, "admin_sub_revoke", { targetId });
+    logger.info({ telegramId, targetId }, "Subscription revoked");
+    await bot.answerCallbackQuery(query.id, { text: `🚫 Подписка у ID ${targetId} отозвана` });
+    await bot.sendMessage(chatId, `🚫 *Подписка отозвана*\n\nПользователь: ID ${targetId}`, { parse_mode: "Markdown" });
+  } else if (data === "admin_test_mode") {
+    logAction(telegramId, "admin_test_mode_started", {});
+    logger.info({ telegramId }, "Admin started test mode via button");
+    await bot.answerCallbackQuery(query.id, { text: "🧪 Тест-режим активирован!" });
+    await handleTestNew(bot, { chat: { id: chatId }, from: { id: telegramId }, text: "" } as any);
   } else if (data === "admin_grant_sub") {
     logAction(telegramId, "admin_grant_sub_initiated", {});
+    setAdminState(telegramId, "grant_sub");
     await bot.sendMessage(
       chatId,
       "🎁 *Выдать подписку*\n\nОтправьте команду в формате:\n`GRANT_SUB:<telegram_id>:<дни>`\n\nПример: `GRANT_SUB:123456789:30`",
       {
         parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_settings" }]],
+          inline_keyboard: [
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
+        ],
         },
       }
     );
   } else if (data === "admin_revoke_sub") {
     logAction(telegramId, "admin_revoke_sub_initiated", {});
+    setAdminState(telegramId, "revoke_sub");
     await bot.sendMessage(
       chatId,
       "🚫 *Отозвать подписку*\n\nОтправьте команду в формате:\n`REVOKE_SUB:<telegram_id>`\n\nПример: `REVOKE_SUB:123456789`",
       {
         parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_settings" }]],
+          inline_keyboard: [
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
+        ],
         },
       }
     );
   } else if (data === "admin_free_limit") {
     logAction(telegramId, "admin_free_limit_opened", {});
+    setAdminState(telegramId, "set_free_limit");
     logger.info({ telegramId }, "Admin opened free limit settings");
+
+    const db = getDb();
+    const currentLimit = db.prepare("SELECT value FROM config WHERE key = 'free_horoscopes_default'").get() as { value: string } | undefined;
+    const currentLimitText = currentLimit ? currentLimit.value : "не установлен";
 
     await bot.sendMessage(
       chatId,
-      "🔮 *Лимит бесплатных попыток*\n\nОтправьте число попыток для новых пользователей (например, `5`):",
+      `🔮 *Лимит бесплатных попыток*\n\nТекущий лимит: *${currentLimitText}*\n\nОтправьте новое число попыток (например, \`5\`):`,
       {
         parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_settings" }]],
+          inline_keyboard: [
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
+        ],
         },
       }
     );
@@ -180,12 +352,12 @@ export async function handleAdminCallback(
       const isSuper = admin.is_super_admin ? " 👑" : "";
       text += `• ${admin.telegram_id}${isSuper}\n`;
       if (admin.telegram_id !== telegramId) {
-        keyboard.push([{ text: `❌ Удалить ${admin.telegram_id}`, callback_data: `admin_remove_${admin.telegram_id}` }]);
+        keyboard.push([{ text: `❌ Удалить ${admin.telegram_id}`, callback_data: `admin_remove_confirm_${admin.telegram_id}` }]);
       }
     }
 
     keyboard.push([{ text: "➕ Добавить админа", callback_data: "admin_add" }]);
-    keyboard.push([{ text: "🔙 Назад", callback_data: "admin_back" }]);
+    keyboard.push([{ text: "🏠 В меню", callback_data: "admin_back" }]);
 
     await bot.sendMessage(chatId, text, {
       parse_mode: "Markdown",
@@ -198,65 +370,83 @@ export async function handleAdminCallback(
     }
 
     logAction(telegramId, "admin_add_initiated", {});
+    setAdminState(telegramId, "add_admin");
     await bot.sendMessage(
       chatId,
       "➕ *Добавить админа*\n\nОтправьте Telegram ID нового админа.\n\nКак узнать ID:\n1. Попросите человека написать боту @userinfobot\n2. Скопируйте его ID\n3. Отправьте мне",
       {
         parse_mode: "Markdown",
         reply_markup: {
-          inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_admins" }]],
+          inline_keyboard: [
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
+        ],
         },
       }
     );
-  } else if (data.startsWith("admin_remove_")) {
+    } else if (data.startsWith("admin_remove_confirm_")) {
     if (!isSuperAdmin(telegramId)) {
       await bot.sendMessage(chatId, "⛔ Только для главного админа.");
       return;
     }
-
-    const targetId = parseInt(data.replace("admin_remove_", ""));
+    const targetId = parseInt(data.replace("admin_remove_confirm_", ""));
+    await bot.answerCallbackQuery(query.id);
+    await bot.editMessageText(
+      `⚠️ *Подтверждение удаления*\n\nВы действительно хотите удалить админа \`${targetId}\`?`,
+      {
+        chat_id: chatId,
+        message_id: query.message!.message_id,
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "✅ Подтвердить", callback_data: `admin_remove_execute_${targetId}` }],
+            [{ text: "❌ Отмена", callback_data: "admin_admins" }],
+          ],
+        },
+      }
+    );
+  } else if (data.startsWith("admin_remove_execute_")) {
+    if (!isSuperAdmin(telegramId)) {
+      await bot.sendMessage(chatId, "⛔ Только для главного админа.");
+      return;
+    }
+    const targetId = parseInt(data.replace("admin_remove_execute_", ""));
     const db = getDb();
     db.prepare("DELETE FROM admins WHERE telegram_id = ?").run(targetId);
-
     logAction(telegramId, "admin_removed", { targetId });
     logger.info({ telegramId, targetId }, "Admin removed");
-
     await bot.answerCallbackQuery(query.id, { text: `✅ Админ ${targetId} удалён` });
-    await bot.deleteMessage(chatId, query.message!.message_id);
-    
     const admins = db.prepare("SELECT telegram_id, is_super_admin, created_at FROM admins ORDER BY created_at").all() as { telegram_id: number; is_super_admin: number; created_at: string }[];
-
     let text = "👥 *Управление админами*\n\n";
     const keyboard: any[][] = [];
-
     for (const admin of admins) {
       const isSuper = admin.is_super_admin ? " 👑" : "";
       text += `• ${admin.telegram_id}${isSuper}\n`;
       if (admin.telegram_id !== telegramId) {
-        keyboard.push([{ text: `❌ Удалить ${admin.telegram_id}`, callback_data: `admin_remove_${admin.telegram_id}` }]);
+        keyboard.push([{ text: `❌ Удалить ${admin.telegram_id}`, callback_data: `admin_remove_confirm_${admin.telegram_id}` }]);
+      }
+    }
+    keyboard.push([{ text: "➕ Добавить админа", callback_data: "admin_add" }]);
+    keyboard.push([{ text: "🏠 В меню", callback_data: "admin_back" }]);
+    try {
+      await bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: query.message!.message_id,
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: keyboard },
+      });
+    } catch (e: any) {
+      // Если редактирование не удалось — отправляем новое сообщение
+      if (e?.response?.body?.error_code === 400) {
+        await bot.sendMessage(chatId, text, {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: keyboard },
+        });
       }
     }
 
-    keyboard.push([{ text: "➕ Добавить админа", callback_data: "admin_add" }]);
-    keyboard.push([{ text: "🔙 Назад", callback_data: "admin_back" }]);
-
-    await bot.sendMessage(chatId, text, {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: keyboard },
-    });
-  } else if (data === "admin_back") {
-    logAction(telegramId, "admin_menu_opened", {});
-    await bot.sendMessage(chatId, "⚙️ *Панель администратора*\nВыберите действие:", {
-      parse_mode: "Markdown",
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "📊 Статистика", callback_data: "admin_stats" }],
-          [{ text: "📢 Рассылка", callback_data: "admin_broadcast" }],
-          [{ text: "⚙️ Настройки", callback_data: "admin_settings" }],
-          [{ text: "👥 Управление админами", callback_data: "admin_admins" }],
-        ],
-      },
-    });
   }
 }
 
@@ -269,6 +459,28 @@ export async function handleAdminMessage(
   const text = msg.text ?? "";
 
   if (!isAdmin(telegramId)) return false;
+
+  // Обработка ввода дней для статистики
+  const adminState = getAdminState(telegramId);
+  if (adminState === "stats_custom_days") {
+    const days = parseInt(text.trim());
+    if (!isNaN(days) && days > 0 && days <= 365) {
+      const stats = getStats("custom", days);
+      const periodText = days === 1 ? "1 день" : (days >= 2 && days <= 4 ? `${days} дня` : `${days} дней`);
+      const resultText = `📊 *Статистика Звездочет (${periodText})*\n\n` +
+        `👥 Всего пользователей: *${stats.totalUsers}*\n` +
+        `🆕 Новых за ${periodText}: *${stats.newUsersToday}*\n` +
+        `💳 Активных подписок: *${stats.activeSubscriptions}*\n` +
+        `🔮 Всего гороскопов: *${stats.totalHoroscopes}*\n` +
+        `📅 Гороскопов сегодня: *${stats.todayHoroscopes}*`;
+      await bot.sendMessage(chatId, resultText, { parse_mode: "Markdown", reply_markup: { inline_keyboard: [[{ text: "🏠 В меню", callback_data: "admin_back" }]] } });
+    } else {
+      await bot.sendMessage(chatId, "❌ Введите число от 1 до 365");
+    }
+    clearAdminState(telegramId);
+    return true;
+  }
+
 
   // 1. Сначала проверяем команды с префиксами
   if (text.startsWith("BROADCAST:")) {
@@ -353,42 +565,64 @@ export async function handleAdminMessage(
     return true;
   }
 
-  // 2. Проверяем число — если супер-админ, то это ID для добавления админа
-  //    Если обычный админ — это лимит попыток
+  // Обработка чисел по контексту (состоянию)
   if (/^\d+$/.test(text.trim())) {
     const value = parseInt(text.trim(), 10);
     const db = getDb();
+    const state = getAdminState(telegramId);
 
-    if (isSuperAdmin(telegramId)) {
-      // Супер-админ: добавляем админа
+    if (state === "add_admin") {
+      // Ждём ввод ID нового админа
+      clearAdminState(telegramId);
       if (value === telegramId) {
         await bot.sendMessage(chatId, "❌ Вы уже админ.");
         return true;
       }
-
       db.prepare("INSERT OR IGNORE INTO admins (telegram_id) VALUES (?)").run(value);
       logAction(telegramId, "admin_added", { targetId: value });
       logger.info({ telegramId, targetId: value }, "Admin added");
       await bot.sendMessage(
         chatId,
-        `✅ Админ добавлен: \`${value}\`\n\nНажмите "🔙 Назад" чтобы вернуться в список.`,
+        `✅ Админ добавлен: \`${value}\`\n\nНажмите "🏠 В меню" чтобы вернуться в список.`,
         {
           parse_mode: "Markdown",
           reply_markup: {
-            inline_keyboard: [[{ text: "🔙 Назад", callback_data: "admin_admins" }]],
+            inline_keyboard: [
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
+        ],
           },
         }
       );
       return true;
-    } else {
-      // Обычный админ: меняем лимит попыток
+    } else if (state === "set_free_limit") {
+      // Ждём ввод лимита попыток
+      clearAdminState(telegramId);
       db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('free_horoscopes_default', ?)").run(value);
       logAction(telegramId, "admin_free_limit_set", { newValue: value });
       logger.info({ telegramId, limit: value }, "Admin set free horoscopes limit");
-      await bot.sendMessage(chatId, `✅ Лимит изменён: *${value}* попыток для новых пользователей`, { parse_mode: "Markdown" });
+      await bot.sendMessage(
+        chatId,
+        `✅ Лимит изменён: *${value}* попыток для новых пользователей`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+          [{ text: "📅 1 день", callback_data: "admin_stats_1day" }, { text: "📅 7 дней", callback_data: "admin_stats_7days" }],
+          [{ text: "📅 30 дней", callback_data: "admin_stats_30days" }, { text: "📅 Все", callback_data: "admin_stats_all" }],
+          [{ text: "🔢 Свой период", callback_data: "admin_stats_custom" }],
+          [{ text: "🏠 В меню", callback_data: "admin_back" }]
+        ],
+          },
+        }
+      );
       return true;
     }
+    // Если состояния нет — игнорируем число (не добавляем админа случайно)
   }
+
 
   return false;
 }
