@@ -28,6 +28,7 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static("/var/www/zvezdochet/artifacts/zvezdochet-miniapp/dist/public"));
 
 app.use("/api", router);
 

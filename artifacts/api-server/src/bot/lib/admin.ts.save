@@ -1,0 +1,6 @@
+
+export const ADMIN_IDS: Set<number> = new Set([1163253697]);
+
+export function isAdmin(telegramId: number): boolean {
+  return ADMIN_IDS.has(telegramId);
+}

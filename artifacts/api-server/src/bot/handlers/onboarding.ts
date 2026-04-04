@@ -7,6 +7,7 @@ type OnboardingState = {
   step: "awaiting_name" | "awaiting_birth_date";
 };
 
+const TEST_USER_PREFIX = 999000;
 const onboardingStates = new Map<number, OnboardingState>();
 
 export function isInOnboarding(telegramId: number): boolean {
@@ -19,6 +20,10 @@ export function getOnboardingStep(telegramId: number): OnboardingState | undefin
 
 export function clearOnboarding(telegramId: number): void {
   onboardingStates.delete(telegramId);
+}
+
+export function setOnboardingState(telegramId: number, step: string): void {
+  onboardingStates.set(telegramId, { step });
 }
 
 const tempNames = new Map<number, string>();
@@ -42,11 +47,6 @@ export async function handleStart(
   if (!user) {
     user = createUser(telegramId, username, firstName, referralCode);
   }
-    // Для тест-юзеров имя уже установлено — пропускаем вопрос
-    if (telegramId >= 999000 && user.first_name) {
-      await sendMainMenu(bot, msg.chat.id, user.first_name);
-      return;
-    }
 
   if (user.name && user.birth_date) {
     await sendMainMenu(bot, msg.chat.id, user.first_name);
@@ -145,15 +145,7 @@ export async function handleOnboardingMessage(
   return false;
 }
 
-export function getMiniAppUrl(): string | null {
-  if (process.env.MINI_APP_URL) return process.env.MINI_APP_URL;
-  const domains = process.env.REPLIT_DOMAINS;
-  if (domains) {
-    const firstDomain = domains.split(",")[0].trim();
-    return `https://${firstDomain}`;
-  }
-  return null;
-}
+ export function getMiniAppUrl(): string | null { if (process.env.MINI_APP_URL) return process.env.MINI_APP_URL; const domains = process.env.REPLIT_DOMAINS; if (domains) { const firstDomain = domains.split(",")[0].trim(); return `https://${firstDomain}`; } return null; }
 
 export async function sendMainMenu(
   bot: TelegramBot,

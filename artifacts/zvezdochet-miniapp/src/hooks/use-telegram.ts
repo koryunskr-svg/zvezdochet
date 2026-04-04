@@ -9,19 +9,23 @@ export function useTelegram() {
       telegram.expand();
       telegram.ready();
       setTg(telegram);
+      console.log('[Telegram] WebApp loaded, user:', telegram.initDataUnsafe?.user);
+    } else {
+      console.log('[Telegram] WebApp NOT available');
     }
   }, []);
 
-  // Use Telegram user if available, fallback to a mock ID for local testing
   const user = tg?.initDataUnsafe?.user || {
     id: 123456789,
     first_name: "Test",
     username: "testuser"
   };
 
+  console.log('[useTelegram] returning telegramId:', user.id);
+
   return {
     tg,
     user,
-    telegramId: user.id as number
+    telegramId: 1163253697 as number // HARDCODED FOR DEBUG
   };
 }

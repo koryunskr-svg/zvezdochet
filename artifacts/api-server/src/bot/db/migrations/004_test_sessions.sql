@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS test_sessions (
+  admin_id INTEGER PRIMARY KEY,
+  test_user_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

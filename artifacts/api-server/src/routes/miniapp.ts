@@ -31,6 +31,7 @@ router.get("/me", (req, res) => {
 
   const telegramId = parsed.data.telegram_id;
   req.log.info({ telegramId }, "miniapp: GET /me");
+  console.log("[API /me] Request received for telegram_id:", telegramId);
   logAction(telegramId, "miniapp_get_me", {});
 
   const user = findUserByTelegramId(telegramId);

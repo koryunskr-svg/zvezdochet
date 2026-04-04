@@ -1,3 +1,6 @@
+import "./init-api";
+import "./init-api";
+import "./init-api";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";

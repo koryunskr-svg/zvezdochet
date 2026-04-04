@@ -6,5 +6,6 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use("/miniapp", miniappRouter);
+router.use("/", miniappRouter);
 
 export default router;
