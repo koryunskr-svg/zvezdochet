@@ -4,13 +4,13 @@ import { getDb, logAction } from "../db";
 import { isAdmin, isSuperAdmin } from "../lib/admin";
 import { logger } from "../../lib/logger";
 // Состояния админов в БД (чтобы не терялось при рестарте)
-function setAdminState(telegramId: number, action: "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub") {
+function setAdminState(telegramId: number, action: "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub" | "stats_custom_days") {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare("INSERT OR REPLACE INTO admin_states (telegram_id, action, created_at) VALUES (?, ?, ?)").run(telegramId, action, now);
 }
 
-export function getAdminState(telegramId: number): "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub" | null {
+export function getAdminState(telegramId: number): "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub" | "stats_custom_days" | null {
   const db = getDb();
   const row = db.prepare("SELECT action, created_at FROM admin_states WHERE telegram_id = ?").get(telegramId) as { action: string; created_at: string } | undefined;
   if (!row) return null;
@@ -20,7 +20,7 @@ export function getAdminState(telegramId: number): "add_admin" | "set_free_limit
     clearAdminState(telegramId);
     return null;
   }
-  return row.action as "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub";
+  return row.action as "add_admin" | "set_free_limit" | "grant_sub" | "revoke_sub" | "stats_custom_days";
 }
 
 export function clearAdminState(telegramId: number) {

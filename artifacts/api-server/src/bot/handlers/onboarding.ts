@@ -22,7 +22,7 @@ export function clearOnboarding(telegramId: number): void {
   onboardingStates.delete(telegramId);
 }
 
-export function setOnboardingState(telegramId: number, step: string): void {
+export function setOnboardingState(telegramId: number, step: "awaiting_name" | "awaiting_birth_date"): void {
   onboardingStates.set(telegramId, { step });
 }
 
@@ -49,7 +49,7 @@ export async function handleStart(
   }
 
   if (user.name && user.birth_date) {
-    await sendMainMenu(bot, msg.chat.id, user.first_name);
+    await sendMainMenu(bot, msg.chat.id, user.first_name ?? "Пользователь");
     return;
   }
 

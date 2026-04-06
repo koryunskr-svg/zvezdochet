@@ -35,7 +35,7 @@ export function createBot(): TelegramBot {
   bot.onText(/\/koryun/, async (msg) => { try { await handleAdminCommand(bot, msg); } catch (err) { logger.error({ err, telegramId: msg.from?.id }, "Error in /koryun"); }});
   bot.onText(/\/set_free/, async (msg) => { try { await handleSetFree(bot, msg); } catch (err) { logger.error({ err, telegramId: msg.from?.id }, "Error in /set_free"); }});
   bot.onText(/\/test_new/, async (msg) => { await handleTestNew(bot, msg); });
-  bot.onText(/\/test_delete (\d+)/, async (msg, match) => { const testUserId = parseInt(match[1]); await handleTestDelete(bot, msg, testUserId); });
+  bot.onText(/\/test_delete (\d+)/, async (msg, match) => { const testUserId = parseInt(match![1]); await handleTestDelete(bot, msg, testUserId); });
   bot.onText(/\/use_user/, async (msg) => { await handleUseUser(bot, msg); });
   bot.onText(/\/exit_test/, async (msg) => { await handleExitTest(bot, msg); });
 
@@ -95,7 +95,7 @@ export function createBot(): TelegramBot {
       else if (data.startsWith("theme_")) { const theme = data.replace("theme_", "") as "light" | "dark"; updateUserTheme(telegramId, theme); await bot.answerCallbackQuery(query.id, { text: theme === "dark" ? "🌙 Тёмная тема включена" : "☀️ Светлая тема включена" }); await handleProfile(bot, { chat: query.message!.chat, from: query.from, text: "" } as any); }
       else if (data === "edit_profile") { await bot.answerCallbackQuery(query.id); await bot.sendMessage(query.message!.chat.id, "Для изменения профиля отправьте /start и пройдите регистрацию заново."); }
       else if (data === "noop") { await bot.answerCallbackQuery(query.id, { text: "Подписка уже активна ✅" }); }
-      else if (data === "exit_test_mode") { await bot.answerCallbackQuery(query.id); const testUserId = query.from.id; const adminId = getAdminForTestUser(testUserId) || query.from.id; const session = endTestSession(adminId); if (session) { logAction(adminId, "test_session_ended", { testUserId: session.testUserId }); await bot.editMessageText("✅ Вы вышли из тест-режима", { chat_id: query.message!.chat.id, message_id: query.message!.message_id, reply_markup: undefined }); } }
+      else if (data === "exit_test_mode") { await bot.answerCallbackQuery(query.id); const testUserId = query.from.id; const adminId = getAdminForTestUser(testUserId) || query.from.id; const session = endTestSession(adminId); if (session) { logAction(adminId, "test_session_ended", { testUserId: session.test_user_id }); await bot.editMessageText("✅ Вы вышли из тест-режима", { chat_id: query.message!.chat.id, message_id: query.message!.message_id, reply_markup: undefined }); } }
       else { await bot.answerCallbackQuery(query.id); }
     } catch (err) { logger.error({ err, telegramId, data }, "Error in callback query handler"); logAction(telegramId, "callback_error", { data, error: String(err) }, "error"); await bot.answerCallbackQuery(query.id, { text: "Произошла ошибка. Попробуйте ещё раз." }); }
   });

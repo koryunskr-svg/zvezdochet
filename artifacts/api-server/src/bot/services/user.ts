@@ -34,13 +34,13 @@ function generateReferralCode(telegramId: number): string {
 export function findUserByTelegramId(telegramId: number): User | null {
   const db = getDb();
   const stmt = db.prepare(`SELECT * FROM users WHERE telegram_id = ? LIMIT 1`);
-  return (stmt.get(telegramId) as User) ?? null;
+  return (stmt.get(telegramId) as unknown as User) ?? null;
 }
 
 export function findUserByReferralCode(code: string): User | null {
   const db = getDb();
   const stmt = db.prepare(`SELECT * FROM users WHERE referral_code = ? LIMIT 1`);
-  return (stmt.get(code) as User) ?? null;
+  return (stmt.get(code) as unknown as User) ?? null;
 }
 
 export function createUser(
